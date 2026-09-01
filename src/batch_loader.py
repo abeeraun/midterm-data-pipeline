@@ -21,10 +21,37 @@ def _flush_batch(db, id_run, raw_docs, validated_ops, quarantine_docs, batch_num
     inserted = updated = unchanged = 0
     if validated_ops:
         try:
-            result = db[COLLECTION_VALIDATED].bulk_write(validated_ops, ordered=False)
-            inserted = result.upserted_count
-            updated = result.modified_count
-            unchanged = max(result.matched_count - result.modified_count, 0)
+            existing_by_id = {}
+            order_ids = []
+            for op in validated_ops:
+                order_id = op._filter.get("order_id")
+                if order_id:
+                    order_ids.append(order_id)
+            if order_ids:
+                existing_by_id = {
+                    doc["order_id"]: doc.get("record_hash")
+                    for doc in db[COLLECTION_VALIDATED].find(
+                        {"order_id": {"$in": order_ids}},
+                        {"order_id": 1, "record_hash": 1},
+                    )
+                }
+
+            operations_to_write = []
+            for op in validated_ops:
+                order_id = op._filter.get("order_id")
+                new_hash = op._doc.get("$set", {}).get("record_hash")
+                if order_id in existing_by_id:
+                    if existing_by_id[order_id] == new_hash:
+                        unchanged += 1
+                    else:
+                        updated += 1
+                        operations_to_write.append(op)
+                else:
+                    inserted += 1
+                    operations_to_write.append(op)
+
+            if operations_to_write:
+                db[COLLECTION_VALIDATED].bulk_write(operations_to_write, ordered=False)
         except BulkWriteError as exc:
             print(f"[Batch #{batch_number}] خطأ جزئي في Upsert لـ orders_validated: "
                   f"{exc.details.get('writeErrors', exc.details)}")

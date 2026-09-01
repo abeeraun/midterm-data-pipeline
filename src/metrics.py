@@ -1,4 +1,4 @@
-import json
+﻿import json
 import time
 from datetime import datetime, timezone
 
@@ -54,7 +54,7 @@ class RunMetrics:
     def to_dict(self):
         ok, expected = self.consistency_check()
         return {
-            "id_run": self.id_run,
+            "run_id": self.id_run,
             "file_name": self.file_name,
             "file_size_mb": self.file_size_mb,
             "used_engine": self.used_engine,

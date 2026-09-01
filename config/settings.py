@@ -35,8 +35,8 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "1000"))
 SPARK_MASTER = os.getenv("SPARK_MASTER", "local[*]")
 SPARK_APP_NAME = os.getenv("SPARK_APP_NAME", "midterm-hybrid-pipeline")
 # spark://192.168.1.10:7077
-SPARK_SHUFFLE_PARTITIONS = int(os.getenv("SPARK_SHUFFLE_PARTITIONS", "8"))
-SPARK_LOCAL_DIR = os.getenv("SPARK_LOCAL_DIR", r"D:\\spark_temp")
+SPARK_SHUFFLE_PARTITIONS = int(os.getenv("SPARK_SHUFFLE_PARTITIONS", "200"))
+SPARK_LOCAL_DIR = os.getenv("SPARK_LOCAL_DIR", str(DATA_DIR / "spark_temp"))
 SPARK_MAX_PARTITION_BYTES = int(os.getenv("SPARK_MAX_PARTITION_BYTES", str(128 * 1024 * 1024)))
 MONGO_BATCH_SIZE = int(os.getenv("MONGO_BATCH_SIZE", "500"))
 MONGO_SPARK_CONNECTOR_PACKAGE = os.getenv(

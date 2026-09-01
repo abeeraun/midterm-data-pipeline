@@ -1,231 +1,185 @@
-شرح معمارية المشروع
+Architecture
 
-ما وظيفة المشروع؟
+1. فكرة المشروع
 
-المشروع يستقبل ملف طلبات بصيغة CSV، ثم يقرأ السجلات ويفحصها ويضع كل سجل في المكان المناسب داخل MongoDB.
+المشروع عبارة عن Hybrid Data Pipeline لمعالجة ملف CSV يحتوي على بيانات طلبات غير نظيفة. يختار النظام طريقة المعالجة حسب حجم الملف، ثم يطبق قواعد Data Quality ويحفظ النتائج في MongoDB.
 
-كل سجل يمر بثلاث مراحل رئيسية:
+يستخدم المشروع نمط ELT. معنى ذلك أن السجلات تصل أولًا إلى Raw Layer كما وردت من المصدر، وبعد ذلك تبدأ عملية التنظيف والتصنيف.
 
-1.
-حفظ السجل كما وصل في مجموعة orders_raw.
+2. المكونات الرئيسية
 
-2.
-فحص السجل وتطبيق قواعد التنظيف الموجودة في quality_rules.py.
+يحتوي المشروع على المكونات التالية:
 
-3.
-حفظ السجل الصحيح أو المصحح في orders_validated، أو وضعه في orders_quarantine إذا كان لا يمكن تصحيحه.
-
-المشروع يستخدم أسلوب ELT. معنى ذلك أن البيانات تُحفظ أولًا كما هي، وبعدها يتم تنظيفها والتحقق منها.
-
-كيف يختار المشروع طريقة المعالجة؟
-
-قبل بدء المعالجة، يفحص البرنامج حجم الملف من خلال file_router.py.
-
-حجم الملف
-البرنامج المستخدم
-200 ميجابايت أو أقل
-batch_loader.py باستخدام Python
-أكبر من 200 ميجابايت
-spark_loader.py باستخدام PySpark
-
-
-
-
-هذا لا يعني أن لدينا مشروعين منفصلين. لدينا Router واحد يختار البرنامج المناسب، بينما قواعد فحص البيانات مشتركة بين الطريقتين.
-
-خطوات معالجة الملف
-
-يمكن تبسيط مسار البيانات بهذا الشكل:
-
-Plain Text
-
-
-ملف CSV
-   |
-   v
-File Router
-   |
-   +------------------+
-   |                  |
-ملف صغير           ملف كبير
-   |                  |
-Python             PySpark
-   |                  |
-   +--------+---------+
-            |
-            v
-       orders_raw
-   البيانات كما وصلت
-            |
-            v
-   quality_rules.py
-   فحص وتنظيف السجلات
-       |          |
-       |          |
-   صالح/مصحح   غير صالح
-       |          |
-       v          v
-orders_validated  orders_quarantine
-
-
-
-ماذا يحدث للسجل الواحد؟
-
-عند قراءة كل صف من ملف CSV، تستدعي البرامج الدالة process_row() الموجودة في elt_pipeline.py.
-
-تقوم هذه الدالة بالآتي:
-
-•
-تنشئ نسخة خام من السجل وتضيف إليها معلومات مثل رقم التشغيل واسم الملف ورقم الصف.
-
-•
-ترسل السجل إلى classify_record() الموجودة في quality_rules.py.
-
-•
-إذا كان السجل صحيحًا، تنشئ عملية Upsert له.
-
-•
-إذا كان السجل قابلًا للتصحيح، تحفظ النسخة المصححة مع حالة corrected.
-
-•
-إذا كان السجل غير قابل للتصحيح، تنشئ مستندًا خاصًا لـ orders_quarantine يحتوي على السجل الخام وأكواد الأخطاء.
-
-ملف elt_pipeline.py لا يكتب مباشرة إلى MongoDB. هو يجهز المستندات وعمليات الكتابة فقط. أما الكتابة الفعلية فتتم من خلال batch_loader.py أو spark_loader.py.
-
-أين تُحفظ البيانات؟
-
-المجموعة
-ما الذي تحفظه؟
-orders_raw
-نسخة من كل سجل كما وصل من الملف، بدون تنظيف
-orders_validated
-السجلات الصحيحة أو التي تم تصحيحها
-orders_quarantine
-السجلات التي تحتوي على أخطاء لا يمكن تصحيحها
-
-
-
-
-في orders_quarantine يتم حفظ سبب المشكلة، بالإضافة إلى نسخة السجل الخام. هذا يساعد على مراجعة السجل ومعرفة سبب رفضه.
-
-لماذا نستخدم Upsert؟
-
-يستخدم المشروع order_id كمفتاح أساسي للطلب. عند كتابة السجل في orders_validated، يبحث البرنامج عن سجل له نفس order_id.
-
-•
-إذا لم يكن السجل موجودًا، ينشئه.
-
-•
-إذا كان موجودًا، يحدث بياناته بدل إنشاء سجل جديد.
-
-هذه العملية تسمى Upsert. فائدتها أن إعادة تشغيل الملف نفسه لا تؤدي إلى تكرار الطلبات في orders_validated.
-
-يوجد أيضًا فهرس فريد على order_id في مجموعة orders_validated، وهذا يمنع وجود أكثر من سجل نهائي للطلب نفسه.
-
-أما orders_raw فقد تحتوي على أكثر من نسخة للطلب نفسه إذا تمت إعادة عملية التحميل. هذا مقصود، لأن هذه المجموعة تحتفظ بتاريخ الملفات التي وصلت إلى النظام.
-
-كيف يعمل مسار التحميل التزايدي؟
-
-يوجد ملف باسم src/incremental_loader.py. هذا الملف يستخدم نفس طريقة المعالجة على دفعات الموجودة في batch_loader.py، لكنه يضيف بعض المعلومات الخاصة بالتشغيل التزايدي.
-
-يمكن تشغيله بمرحلة اسمها initial أو مرحلة اسمها delta. في الكود، اسم المرحلة يستخدم للتسجيل والطباعة، بينما طريقة قراءة السجلات ومعالجتها تبقى نفسها داخل الدالة.
-
-يحاول البرنامج أيضًا حساب بصمة SHA-256 للملف. وبعد اكتمال التشغيل، يحفظ معلومات التشغيل في المسار التالي:
-
-Plain Text
-
-
-data/_incremental_state.json
-
-
-
-مهم: هذا الملف ليس موجودًا ضمن المشروع من البداية. الموجود هو مجلد data فقط. ملف _incremental_state.json ينشئه البرنامج أثناء التشغيل إذا وصل إلى مرحلة حفظ الحالة. وإذا لم يكن الملف موجودًا عند بدء التشغيل، يبدأ البرنامج بحالة فارغة.
-
-لذلك يجب أن نقول إن الكود مهيأ لإنشاء الملف، وليس أن الملف موجود مسبقًا.
-
-ما معنى at_updated؟
-
-عند إنشاء عملية Upsert للسجل، يضيف الكود الحقل at_updated، ويضع فيه وقت تنفيذ العملية. كما يضيف at_first_validated عند إنشاء السجل لأول مرة.
-
-بمعنى آخر:
-
-الحقل
-معناه
-at_updated
-آخر وقت تم فيه تحديث السجل
-at_first_validated
-وقت إدخال السجل إلى orders_validated لأول مرة
-
-
-
-
-يستخدم الكود $set لكتابة القيم النهائية للسجل. لذلك، عند إعادة تشغيل نفس البيانات، لا يتم جمع القيمة القديمة مع الجديدة، بل يتم تحديث السجل إلى حالته الحالية.
-
-ما الفرق بين Python وPySpark في الكتابة؟
-
-في مسار Python تتم قراءة السجلات وتجميعها في دفعات، ثم تُرسل الدفعة إلى MongoDB.
-
-في مسار PySpark يتم تقسيم البيانات إلى Partitions ومعالجة الأجزاء بالتوازي. تستخدم مرحلة orders_raw طريقة الكتابة الخاصة بموصل MongoDB-Spark، لأن هذه المرحلة تحفظ البيانات كما هي.
-
-أما البيانات التي تحتاج إلى فحص وتصنيف وUpsert، فيتم التعامل معها داخل mapPartitions باستخدام pymongo. السبب هو أن هذه المرحلة تحتاج إلى منطق Python وقواعد شرطية لكل سجل، وليس مجرد كتابة DataFrame مباشرة.
-
-القيود الموجودة في التنفيذ
-
-هناك نقطتان يجب معرفتهما:
-
-أولًا، رقم الصف number_row_source في مسار PySpark ليس بالضرورة رقم الصف الحقيقي المتسلسل في ملف CSV. يتم توليده بطريقة مناسبة للتتبع، لكنه قد لا يكون مرتبًا من 1 إلى آخر صف بسبب توزيع البيانات على عدة Partitions.
-
-ثانيًا، اكتشاف السجلات المكررة باستخدام ID_ORDER_DUPLICATE في PySpark يتم داخل نطاق كل Partition. لذلك قد لا يكتشف البرنامج كل التكرارات الموجودة في الملف كاملًا إذا توزعت السجلات المكررة على Partitions مختلفة. يمكن تحسين ذلك مستقبلًا بفحص جميع السجلات وتجميعها حسب order_id قبل مرحلة التصنيف، لكن هذا سيضيف تكلفة معالجة.
-
-الخلاصة
-
-فكرة المشروع بسيطة:
-
-1.
-يستقبل ملف CSV.
-
-2.
-يختار Python أو PySpark حسب حجم الملف.
-
-3.
-يحفظ نسخة كاملة من البيانات في orders_raw.
-
-4.
-يفحص كل سجل باستخدام قواعد مشتركة.
-
-5.
-يحفظ السجلات الصحيحة والمصححة في orders_validated.
-
-6.
-يحفظ السجلات التي تحتوي على أخطاء غير قابلة للتصحيح في orders_quarantine.
-
-7.
-يستخدم Upsert وorder_id حتى لا تتكرر السجلات النهائية عند إعادة التشغيل.
-
-8.
-يحتوي على مسار تزايدي يمكنه إنشاء ملف حالة باسم data/_incremental_state.json أثناء التشغيل، مع التأكيد أن هذا الملف ليس موجودًا مسبقًا في بنية المشروع.
-
-أهم الملفات
-
-الملف
-وظيفته
+المكون
+الوظيفة
+src/main.py
+نقطة التشغيل الرئيسية وإدارة دورة التنفيذ
 src/file_router.py
-اختيار Python أو PySpark
+اختيار Processing Engine حسب حجم الملف
 src/batch_loader.py
-معالجة الملفات الصغيرة على دفعات
+معالجة الملفات الصغيرة باستخدام Python Batch
 src/spark_loader.py
 معالجة الملفات الكبيرة باستخدام PySpark
 src/quality_rules.py
-فحص السجلات وتنظيفها وتصنيفها
+قواعد التنظيف والتصنيف في مسار Python
 src/elt_pipeline.py
-تجهيز المستندات وعمليات Upsert والعزل
-src/incremental_loader.py
-تشغيل مسار التحميل التزايدي
+تجهيز Raw Documents وValidated Upsert وQuarantine Documents
 src/mongo_setup.py
-تجهيز MongoDB والفهارس
-reports/results.json
-حفظ نتائج ومقاييس التشغيل
-data/_incremental_state.json
-ملف ينشئه مسار التحميل
+إنشاء Collections وIndexes وSchema Validation
+src/metrics.py
+حفظ Metrics الخاصة بكل Run
+MongoDB
+تخزين Raw وValidated وQuarantine
 
+
+
+
+3. تدفق البيانات
+
+mermaid
+
+Source
+
+
+
+يحفظ المساران السجل في orders_raw قبل تطبيق Quality Rules. بعد ذلك تذهب السجلات Valid وCorrected إلى orders_validated، بينما تذهب السجلات التي لا يمكن تصحيحها بأمان إلى orders_quarantine.
+
+4. File Router
+
+يبدأ التنفيذ من src/main.py. يقرأ البرنامج مسار الملف وحجمه وينشئ Run ID. بعد ذلك يستدعي File Router.
+
+قيمة الحد الفاصل المستخدمة في المشروع هي 200 MB. إذا كان حجم الملف أقل من أو يساوي هذا الحد، يتم اختيار Python Batch. وإذا تجاوز الملف هذا الحد، يتم اختيار PySpark.
+
+يطبع Router مسار الملف وحجمه وProcessing Engine والسبب الذي أدى إلى الاختيار.
+
+5. Python Batch Path
+
+يستخدم batch_loader.py قراءة Streaming من خلال csv module. تتم قراءة السجلات صفًا صفًا وتجميعها داخل Batches قابلة للضبط. لا يستخدم المسار list(reader)، ولذلك لا يحتاج إلى تحميل الملف كاملًا في الذاكرة.
+
+لكل Batch يقوم البرنامج بما يلي:
+
+يضيف كل سجل إلى orders_raw مع Run ID وSource File وSource Row Number ووقت الإدخال واسم المحرك وRaw Record.
+
+يمرر السجل إلى elt_pipeline.py، الذي يستدعي quality_rules.py لتطبيق قواعد التنظيف والتصنيف.
+
+يجهز Bulk Upsert للسجلات Valid وCorrected، ويجهز Quarantine Document للسجلات غير القابلة للتصحيح.
+
+يكتب Batch إلى MongoDB، ثم يسجل عدد السجلات والزمن وThroughput وعدادات Inserted وUpdated وUnchanged.
+
+6. PySpark Path
+
+يستخدم spark_loader.py SparkSession وDataFrame API لمعالجة الملفات الكبيرة. تتم قراءة الملف باستخدام Schema ثابتة بدل inferSchema، وذلك للمحافظة على القيم غير النظيفة في Raw قبل تطبيق التحويلات.
+
+يقسم Spark البيانات إلى Input Partitions ويطبق Transformations باستخدام DataFrame Expressions. تتم معالجة قواعد التنظيف داخل مسار Spark بصياغة مكافئة لقواعد Python. تم اختبار المسارين على نفس العينة، وأصبح تصنيفهما متطابقًا.
+
+يستخدم المسار MongoDB Spark Connector للكتابة إلى MongoDB. كما يحسب Input Partitions ووقت التنفيذ وThroughput وعدادات Valid وCorrected وQuarantine وInserted وUpdated وUnchanged.
+
+تم ضبط SPARK_SHUFFLE_PARTITIONS على 200 لتقليل الضغط على الذاكرة أثناء عمليات Shuffle للملفات الكبيرة. كما يتم استخدام مجلد مؤقت منفصل لملفات Spark.
+
+7. ELT وRaw Layer
+
+تصل جميع السجلات أولًا إلى orders_raw دون تطبيق Quality Filtering. يحتوي كل Raw Document على الحقول التالية:
+
+الحقل
+الغرض
+run_id
+معرف فريد للتشغيل
+source_file
+مسار أو اسم الملف المصدر
+source_row_number
+رقم الصف عندما يكون متاحًا
+ingested_at
+وقت تحميل السجل
+engine_used
+Python Batch أو PySpark
+raw_record
+السجل كما وصل من CSV
+
+
+
+
+تحتفظ orders_raw بتاريخ التشغيلات المختلفة. لذلك يمكن أن يحتوي هذا Collection على أكثر من نسخة من السجل نفسه عند إعادة تشغيل الملف، وتستخدم run_id للتمييز بين التشغيلات.
+
+8. Data Quality وClassification
+
+يصنف النظام كل سجل إلى إحدى الحالات التالية:
+
+الحالة
+المعنى
+المكان النهائي
+Valid
+السجل صالح ولم يحتج إلى تعديل
+orders_validated
+Corrected
+تم إصلاح السجل بقاعدة واضحة
+orders_validated
+Quarantine
+لا يمكن تصحيح السجل بأمان
+orders_quarantine
+
+
+
+
+تتضمن قواعد التنظيف تحويل Arabic وPersian Digits، وتوحيد Currency، ومعالجة Thousand Separators، وتحويل الأسعار المكتوبة بالكلمات، وتطبيع Phone Number، وتصحيح Repeated Email Symbols، وتوحيد Date Format، وتنظيف Text Fields، وإعادة حساب Order Total عند صلاحية مكوناته.
+
+لا يتم التصحيح عندما تكون القيمة غير قابلة للاستنتاج بأمان. في هذه الحالة ينتقل السجل إلى Quarantine مع سبب واضح.
+
+9. Audit Trail
+
+يحتوي كل Corrected Record على quality_status بقيمة corrected، وعلى corrections توضح الحقول التي تغيرت. يتضمن كل Correction عادة Field وOriginal Value وCorrected Value وRule Code.
+
+بهذا لا يتم حفظ القيمة النهائية فقط، بل يمكن معرفة ما الذي تغير ولماذا تم تغييره.
+
+10. Quarantine
+
+يحتوي كل Quarantine Document على Run ID وSource File وSource Row Number وError Codes وError Details وRaw Record.
+
+من أمثلة Error Codes المستخدمة MISSING_ORDER_ID وMISSING_CUSTOMER_ID وINVALID_IMPOSSIBLE_DATE وCORRUPTED_ITEMS_JSON وEMPTY_ITEMS وUNKNOWN_PRICE وAMBIGUOUS_NEGATIVE_VALUE وDUPLICATE_ORDER_ID وMULTIPLE_CONFLICTING_ERRORS وEMAIL_UNFIXABLE.
+
+لا يتم حذف السجل غير القابل للتصحيح، بل يتم الاحتفاظ به للمراجعة داخل orders_quarantine.
+
+11. MongoDB Design
+
+يستخدم المشروع ثلاث Collections:
+
+orders_raw لحفظ كل السجلات الخام مع معلومات المصدر والتشغيل.
+
+orders_validated لحفظ السجلات Valid وCorrected القابلة للاستخدام.
+
+orders_quarantine لحفظ السجلات التي لا يمكن تصحيحها بأمان.
+
+يحتوي orders_validated على Schema Validation للحقول الأساسية، وعلى Unique Index باسم uniq_order_id على order_id. يستخدم order_id كـStable Business Key في عملية Upsert.
+
+إذا لم يكن order_id موجودًا في orders_validated، يتم إدخال سجل جديد. وإذا كان موجودًا واختلف record_hash، يتم تحديث السجل الموجود. وإذا كان record_hash مطابقًا، يحسب النظام السجل Unchanged ولا ينشئ نسخة جديدة.
+
+12. Idempotency وUpsert
+
+تم اختبار تشغيل نفس الملف مرتين في Python Batch وPySpark. في التشغيل الثاني بقي عدد documents في orders_validated ثابتًا، ولم تظهر Duplicate Business Records.
+
+تم أيضًا تعديل سجل موجود في قاعدة اختبار، ثم تشغيل نفس الملف مرة أخرى. أظهر اختبار PySpark count_updated بقيمة 1، مع count_inserted بقيمة 0، وبقاء عدد orders_validated ثابتًا. هذا يثبت أن Update يتم على السجل الموجود بدل إنشاء سجل جديد.
+
+تختلف طبيعة Collections في هذا الجانب؛ orders_validated تمثل الحالة النهائية الفريدة، بينما orders_raw وorders_quarantine يمكن أن تحتفظا بسجل لكل Run لأغراض التتبع.
+
+13. Metrics
+
+يحفظ البرنامج نتائج كل Run في reports/results.json. تشمل Metrics Run ID واسم الملف وحجمه وProcessing Engine وRows Read وRaw Loaded وValid Count وCorrected Count وQuarantine Count وElapsed Seconds وThroughput وBatch Size أو Partitions وError Case Counts وInserted Count وUpdated Count وUnchanged Count وConsistency Check.
+
+تستخدم Consistency Check العلاقة التالية:
+
+Plain Text
+
+
+raw_loaded = valid_count + corrected_count + quarantine_count
+
+
+
+14. Resource Management
+
+يتم إغلاق SparkSession واتصال MongoDB داخل finally في نقطة التشغيل. هذا يضمن إغلاق الموارد حتى عند حدوث خطأ أثناء المعالجة.
+
+15. النتائج الرئيسية
+
+تمت معالجة ملف يحتوي على 30,000,000 سجل باستخدام PySpark بنجاح. كانت النتائج 22,343,466 Valid، و5,697,571 Corrected، و1,958,963 Quarantine. مجموع الحالات الثلاث يساوي 30,000,000 سجل.
+
+كما تم اختبار Classification Parity على عينة من 485 سجلًا، وكانت النتائج متطابقة بين Python Batch وPySpark.
 

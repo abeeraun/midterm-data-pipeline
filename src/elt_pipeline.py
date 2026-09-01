@@ -50,6 +50,7 @@ def build_validated_upsert(clean_record, quality_status, corrections, id_run):
         "quality_status": quality_status,
         "corrections": corrections,
         "record_hash": record_hash,
+        "last_seen_run": id_run,  # ينتقل كل مرة السجل يتلمس - كان بالغلط بـ$setOnInsert فما يتحدث أبداً
     })
 
     return UpdateOne(
@@ -59,7 +60,6 @@ def build_validated_upsert(clean_record, quality_status, corrections, id_run):
             "$set": set_fields,
             "$setOnInsert": {
                 "at_first_validated": now,
-                "last_seen_run": id_run,
             },
         },
         upsert=True,

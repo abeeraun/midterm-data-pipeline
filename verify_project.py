@@ -1,7 +1,7 @@
 ﻿from pymongo import MongoClient
 
 MONGO_URI = "mongodb://127.0.0.1:27017"
-DB_NAME = "midterm_orders_pipeline"
+DB_NAME = "midterm_orders_pipeline_30m_final"
 
 client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
 db = client[DB_NAME]
@@ -45,7 +45,7 @@ check("orders_raw bidoon Validator (6.9)", not bool(raw_validator))
 
 sample_raw = db.orders_raw.find_one()
 if sample_raw:
-    required_raw_fields = ["id_run", "file_source", "number_row_source", "at_ingested", "engine_used", "record_raw"]
+    required_raw_fields = ["run_id", "source_file", "source_row_number", "ingested_at", "engine_used", "raw_record"]
     missing = [f for f in required_raw_fields if f not in sample_raw]
     check("orders_raw feeha kul alhuqool (6.5)", len(missing) == 0,
           f"na2is: {missing}" if missing else "")

@@ -1,4 +1,4 @@
-from pymongo import ASCENDING
+﻿from pymongo import ASCENDING
 from pymongo.errors import CollectionInvalid
 
 from config.settings import (
@@ -33,7 +33,7 @@ def ensure_collections(db):
         db.create_collection(COLLECTION_RAW)
         print(f"[MongoSetup] أُنشئت collection: {COLLECTION_RAW} (بدون Validator/Index)")
 
-    db[COLLECTION_RAW].create_index([("id_run", ASCENDING)])
+    db[COLLECTION_RAW].create_index([("run_id", ASCENDING)])
     db[COLLECTION_RAW].create_index([("order_id", ASCENDING)])
 
     # 2) orders_validated: Schema Validation + Unique Index على order_id
@@ -67,6 +67,6 @@ def ensure_collections(db):
     if COLLECTION_QUARANTINE not in existing:
         db.create_collection(COLLECTION_QUARANTINE)
         print(f"[MongoSetup] أُنشئت collection: {COLLECTION_QUARANTINE}")
-    db[COLLECTION_QUARANTINE].create_index([("id_run", ASCENDING)])
+    db[COLLECTION_QUARANTINE].create_index([("run_id", ASCENDING)])
 
     print("[MongoSetup] كل الـcollections والـIndexes جاهزة.")
