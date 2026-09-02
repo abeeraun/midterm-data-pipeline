@@ -275,11 +275,3 @@ midterm-data-pipeline/
 └── docs/
     └── architecture.md
 
-
-
-18. ملفات التسليم
-
-يجب أن تتضمن نسخة التسليم README.md وrequirements.txt وconfig/settings.py ومجلد src ومجلد tests وreports/results.json وreports/results.md وdocs/architecture.md.
-
-يجب إرفاق صور MongoDB Compass التي توضح Collections، وصور Spark UI إذا كان المسار المتقدم أو متطلبات العرض تتطلبها، بالإضافة إلى أدلة التشغيل والنتائج الخاصة بـIdempotency وUpsert وUpdate.
-
