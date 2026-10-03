@@ -13,8 +13,7 @@ RESULTS_JSON_PATH = Path(os.getenv("RESULTS_JSON_PATH", str(REPORTS_DIR / "resul
 # MongoDB
 # ---------------------------------------------------------------------------
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-DB_NAME = os.getenv("DB_NAME", "midterm_data_pipeline")
-
+DB_NAME = os.getenv("DB_NAME", "midterm_orders_pipeline_30m_final")
 COLLECTION_RAW = os.getenv("COLLECTION_RAW", "orders_raw")
 COLLECTION_VALIDATED = os.getenv("COLLECTION_VALIDATED", "orders_validated")
 COLLECTION_QUARANTINE = os.getenv("COLLECTION_QUARANTINE", "orders_quarantine")
