@@ -1,360 +1,300 @@
-﻿**# Hybrid Order Data Pipeline**
+﻿# Hybrid Order Data Pipeline
 
+مشروع عملي لمقرر **Big Data** لبناء Hybrid Data Pipeline لمعالجة بيانات
+طلبات غير نظيفة باستخدام **Python Batch وPySpark وMongoDB**، مع تنفيذ
+الاستعلامات والتحليلات وMaterialized Views والمهام المجدولة وواجهة
+FastAPI.
 
+يطبق المشروع نمط **ELT**؛ إذ يتم تحميل السجلات الخام أولًا إلى MongoDB،
+ثم تطبيق Data Cleaning وData Quality Rules، وبعد ذلك تصنيف السجلات إلى
+**Valid / Corrected / Quarantine**.
 
-مشروع عملي لمقرر البيانات الضخمة لبناء Hybrid Data Pipeline لمعالجة بيانات طلبات غير نظيفة باستخدام Python Batch وPySpark وMongoDB، مع تنفيذ الاستعلامات والتحليلات وMaterialized Views والمهام المجدولة وواجهة FastAPI.
+## 1. Requirements
 
+-   Python 3.10+
+-   Java 17+ لتشغيل PySpark
+-   MongoDB
+-   مساحة تخزين كافية عند تشغيل الملف الكبير
 
+يجب تشغيل MongoDB قبل بدء الـ Pipeline.
 
-يطبق المشروع نمط ELT؛ إذ يتم تحميل السجلات الخام أولًا إلى MongoDB، ثم تطبيق Data Cleaning وData Quality Rules، وبعد ذلك تصنيف السجلات إلى Valid وCorrected وQuarantine.
+## 2. Installation
 
+### Windows
 
-
-**## 1. المتطلبات**
-
-
-
-يحتاج المشروع إلى Python 3.10 أو أحدث، وJava 17 أو أحدث لتشغيل PySpark، وMongoDB يعمل على `localhost:27017` أو على MongoDB URI آخر يتم تحديده في الإعدادات.
-
-
-
-يحتاج تشغيل الملف الكبير إلى مساحة كافية للملف الأصلي وملفات Spark المؤقتة وبيانات MongoDB.
-
-
-
-قبل التشغيل، تأكد من تشغيل MongoDB وتثبيت المتطلبات الموجودة في `requirements.txt`.
-
-
-
-**## 2. تثبيت المشروع**
-
-
-
-على Windows:
-
-
-
-```text
-
+``` powershell
 python -m venv .venv
-
 .\.venv\Scripts\Activate.ps1
-
 pip install -r requirements.txt
+```
 
+### Linux / macOS
 
-
-على Linux أو macOS:
-
+``` bash
 python3 -m venv .venv
-
 source .venv/bin/activate
-
 pip install -r requirements.txt
+```
 
+## 3. Configuration
 
+الإعدادات الأساسية موجودة في `config/settings.py`، ويمكن استخدام
+Environment Variables للقيم التي تختلف بين الأجهزة.
 
-## 3. إعدادات المشروع
+أهم الإعدادات:
 
-توجد الإعدادات الأساسية في config/settings.py، ويمكن استخدام Environment Variables للقيم التي تختلف بين الأجهزة.
-
-من أهم الإعدادات:
-
+``` text
 SMALL_FILE_THRESHOLD_MB = 200
-
 BATCH_SIZE = 1000
-
 MONGO_BATCH_SIZE = 500
-
 SPARK_MASTER = local[2]
-
 SPARK_SHUFFLE_PARTITIONS = 200
-
 COLLECTION_RAW = orders_raw
-
 COLLECTION_VALIDATED = orders_validated
-
 COLLECTION_QUARANTINE = orders_quarantine
+```
 
+يوجد أيضًا `example.env` كنموذج للقيم المطلوبة.
 
+يختار File Router **Python Batch** عندما يكون حجم الملف أقل من أو يساوي
+200 MB، ويختار **PySpark** عندما يتجاوز الملف هذا الحد.
 
-ويحتوي المشروع أيضًا على ملف example.env كنموذج للقيم المطلوبة.
+## 4. Running the Pipeline
 
-يختار File Router Python Batch عندما يكون حجم الملف أقل من أو يساوي 200 MB، ويختار PySpark عندما يتجاوز الملف هذا الحد.
+نقطة التشغيل الرئيسية هي `src.main`. يقرأ البرنامج مسار الملف وحجمه،
+وينشئ `run_id`، ثم يختار Processing Engine المناسب.
 
-## 4. تشغيل المشروع
+### Python Batch
 
-نقطة التشغيل الرئيسية هي src.main. يقوم البرنامج بقراءة مسار الملف، وحساب حجمه، وإنشاء run_id، ثم اختيار Processing Engine المناسب.
-
-لتشغيل ملف صغير باستخدام Python Batch:
-
+``` powershell
 python -m src.main --input data\orders_sample.csv --threshold-mb 100
+```
 
+### PySpark
 
-
-لتشغيل ملف كبير باستخدام PySpark:
-
+``` powershell
 python -m src.main --input data\orders_huge_mixed_quality.csv --threshold-mb 0
+```
 
+استخدام `threshold-mb 0` يجبر الـ Router على اختيار PySpark للاختبار.
 
+## 5. Creating a Test Sample
 
-تستخدم قيمة threshold تساوي 0 في اختبار PySpark لإجبار Router على اختيار PySpark حتى مع ملف صغير.
+يمكن إنشاء Sample من الملف الكبير دون Excel أو تعديل البيانات يدويًا:
 
-## 5. إنشاء Sample للاختبار
-
-يحتوي المشروع على Script مستقل لإنشاء Sample من الملف الكبير دون استخدام Excel أو تعديل البيانات يدويًا.
-
+``` powershell
 python -m src.create_small_sample --input data\orders_huge_mixed_quality.csv --output data\orders_sample_500.csv --rows 500 --seed 42
+```
 
+قيمة `rows` قابلة للتغيير.
 
+## 6. Pipeline Architecture
 
-قيمة rows قابلة للتغيير. ينتج الأمر ملفًا يحتوي على Header وعدد السجلات المطلوب.
+تبدأ العملية بقراءة مسار الملف وحجمه وإنشاء `run_id`، ثم يختار File
+Router المحرك المناسب.
 
-## 6. مراحل Pipeline
+يتم تحميل جميع السجلات إلى `orders_raw` قبل تطبيق Cleaning أو Quality
+Filtering. بعد ذلك تطبق قواعد التحويل والتحقق، ثم يصنف كل سجل إلى Valid
+أو Corrected أو Quarantine.
 
-تبدأ العملية بقراءة مسار الملف وحجمه وإنشاء run_id. بعد ذلك يختار File Router المحرك المناسب.
+تتم كتابة Valid وCorrected إلى `orders_validated` باستخدام **Idempotent
+Upsert**، بينما تتم كتابة السجلات غير القابلة للتصحيح إلى
+`orders_quarantine` مع سبب العزل والسجل الخام.
 
-يتم تحميل جميع السجلات إلى orders_raw قبل تطبيق أي Cleaning أو Quality Filtering. بعد ذلك تطبق قواعد التحويل والتحقق، ثم يصنف كل سجل إلى Valid أو Corrected أو Quarantine.
-
-تتم كتابة السجلات Valid وCorrected إلى orders_validated باستخدام Idempotent Upsert، بينما تتم كتابة السجلات غير القابلة للتصحيح إلى orders_quarantine مع سبب العزل والسجل الخام.
-
-في النهاية تحفظ Metrics الخاصة بكل Run في reports/results.json.
+تحفظ Metrics الخاصة بكل Run في `reports/results.json`.
 
 ## 7. Python Batch Loader
 
-يستخدم Python Batch Loader قراءة Streaming من خلال csv module، ويعالج السجلات في Batches قابلة للضبط بدل تحميل الملف كاملًا إلى الذاكرة.
+يستخدم Python Batch Loader قراءة Streaming من خلال `csv` module، ويعالج
+السجلات في Batches قابلة للضبط بدل تحميل الملف كاملًا إلى الذاكرة.
 
-لكل Batch يتم تسجيل عدد السجلات والزمن وThroughput. يتم استخدام insert_many لكتابة Raw وعمليات Bulk Upsert لكتابة Validated.
+يتم تسجيل عدد السجلات والزمن وThroughput لكل Batch، مع استخدام
+`insert_many` للـ Raw وBulk Upsert للـ Validated.
 
 ## 8. PySpark Loader
 
-يستخدم PySpark Loader SparkSession وDataFrame API وSchema ثابتة بدل inferSchema. تتم قراءة الحقول الحساسة كقيم String في Raw للمحافظة على القيم الأصلية قبل التنظيف.
+يستخدم PySpark Loader:
 
-يستخدم PySpark MongoDB Connector للكتابة إلى MongoDB، ويسجل عدد Input Partitions والزمن وThroughput. تم ضبط SPARK_SHUFFLE_PARTITIONS على 200 لتقليل الضغط على الذاكرة عند معالجة الملف الكبير.
+-   `SparkSession`
+-   DataFrame API
+-   Fixed Schema بدل `inferSchema`
+-   قراءة الحقول الحساسة كـ String في Raw للمحافظة على القيم الأصلية
+-   PySpark MongoDB Connector للكتابة إلى MongoDB
 
-## 9. قواعد Data Quality
+يسجل Input Partitions والزمن وThroughput. وتم ضبط
+`SPARK_SHUFFLE_PARTITIONS` على 200.
 
-يطبق المشروع أكثر من ثماني قواعد تنظيف وتصحيح، من أهمها تحويل Arabic وPersian Digits، وتوحيد Currency، ومعالجة Thousand Separators، وتحويل الأسعار المكتوبة بالكلمات، وتطبيع Phone Number، وتصحيح Repeated Email Symbols، وتوحيد Date Format، وإزالة المسافات وتوحيد المرادفات، وإعادة حساب Order Total عند صلاحية مكوناته.
+## 9. Data Quality Rules
 
-لا يتم التصحيح إلا عندما تكون قاعدة التحويل واضحة. أما القيم التي لا يمكن تصحيحها بأمان فتنتقل إلى Quarantine.
+يطبق المشروع أكثر من ثماني قواعد تنظيف وتصحيح، من أهمها:
 
-كل سجل Corrected يحتفظ بـAudit Trail داخل corrections، ويشمل Field وOriginal Value وCorrected Value وRule Code.
+-   تحويل Arabic وPersian Digits
+-   توحيد Currency
+-   معالجة Thousand Separators
+-   تحويل الأسعار المكتوبة بالكلمات
+-   تطبيع Phone Number
+-   تصحيح Repeated Email Symbols
+-   توحيد Date Format
+-   إزالة المسافات وتوحيد المرادفات
+-   إعادة حساب Order Total عند صلاحية مكوناته
+
+لا يتم التصحيح إلا عندما تكون قاعدة التحويل واضحة. أما القيم التي لا
+يمكن تصحيحها بأمان فتنتقل إلى Quarantine.
+
+كل سجل Corrected يحتفظ بـ Audit Trail داخل `corrections`، ويشمل Field
+وOriginal Value وCorrected Value وRule Code.
 
 ## 10. Quarantine
 
-تحتوي orders_quarantine على السجلات التي لا يمكن تصحيحها بأمان. يتضمن كل مستند Run ID وSource File وSource Row Number وError Codes وError Details وRaw Record.
+تحتوي `orders_quarantine` على السجلات التي لا يمكن تصحيحها بأمان.
 
-من أمثلة أسباب العزل:
+يتضمن كل مستند:
 
-- Missing Order ID
+-   Run ID
+-   Source File
+-   Source Row Number
+-   Error Codes
+-   Error Details
+-   Raw Record
 
-- Missing Customer ID
+ومن أمثلة أسباب العزل:
 
-- Invalid or Impossible Date
-
-- Corrupted Items JSON
-
-- Empty Items
-
-- Unknown Price
-
-- Ambiguous Negative Value
-
-- Duplicate Order ID
-
-- Multiple Conflicting Errors
+-   Missing Order ID
+-   Missing Customer ID
+-   Invalid or Impossible Date
+-   Corrupted Items JSON
+-   Empty Items
+-   Unknown Price
+-   Ambiguous Negative Value
+-   Duplicate Order ID
+-   Multiple Conflicting Errors
 
 ## 11. MongoDB Collections
 
-orders_raw تحتوي على السجلات الأصلية كما وصلت، مع بيانات المصدر والتشغيل.
+### `orders_raw`
 
-orders_validated تحتوي على السجلات Valid وCorrected القابلة للاستخدام، مع Quality Status وCorrections وRecord Hash.
+السجلات الأصلية كما وصلت، مع بيانات المصدر والتشغيل.
 
-orders_quarantine تحتوي على السجلات التي لم يمكن تصحيحها، مع أسباب العزل والسجل الخام.
+### `orders_validated`
 
-يحتوي orders_validated على Unique Index باسم uniq_order_id على order_id، ويستخدم order_id كـStable Business Key في Upsert.
+السجلات Valid وCorrected القابلة للاستخدام، مع Quality Status
+وCorrections وRecord Hash.
 
-كما توجد Indexes إضافية للاستعلامات والتحليلات، منها Index على customer_id وcity وCompound Index على status وorder_date.
+### `orders_quarantine`
 
-## 12. Idempotency وUpsert
+السجلات التي لم يمكن تصحيحها، مع أسباب العزل والسجل الخام.
 
-تم اختبار إعادة تشغيل نفس Sample في Python Batch وPySpark. في التشغيل الثاني لم يزد عدد المستندات في orders_validated، ولم تظهر Business Records مكررة.
+يحتوي `orders_validated` على Unique Index باسم `uniq_order_id` على
+`order_id`، ويستخدم `order_id` كـ Stable Business Key في Upsert.
 
-في اختبار Python Batch الثاني كانت النتائج:
+كما توجد Indexes إضافية للاستعلامات والتحليلات:
 
-count_inserted = 0
+-   `idx_customer_id`
+-   `idx_city`
+-   `idx_status_order_date` --- Compound Index
 
-count_updated = 0
+## 12. Idempotency and Upsert
 
-count_unchanged = 466
+تم اختبار إعادة تشغيل نفس Sample في Python Batch وPySpark.
 
+في التشغيل الثاني لم يزد عدد المستندات في `orders_validated` ولم تظهر
+Business Records مكررة.
 
+تم أيضًا تعديل سجل موجود ثم إعادة تشغيل Pipeline، وتم التحقق من تنفيذ
+Update بدل إنشاء سجل جديد.
 
-وفي اختبار PySpark الثاني كانت النتائج:
+## 13. Large-Scale Run
 
-count_inserted = 0
+تم تشغيل الملف الكبير باستخدام PySpark بنجاح.
 
-count_updated = 0
+النتائج المسجلة:
 
-count_unchanged = 466
+  Metric                                       Result
+  ------------------------- -------------------------
+  Engine                                      PySpark
+  Rows Read                                30,000,000
+  Loaded Raw                               30,000,000
+  Valid                                    22,343,466
+  Corrected                                 5,697,571
+  Quarantine                                1,958,963
+  Input Partitions                                 99
+  Processing Time                   19,913.98 seconds
+  Throughput                  1,506.48 records/second
+  Inserted into Validated                  28,041,037
 
+Consistency Check:
 
-
-تم أيضًا تعديل سجل موجود ثم إعادة تشغيل Pipeline. في اختبار PySpark ظهرت النتائج:
-
-count_inserted = 0
-
-count_updated = 1
-
-count_unchanged = 465
-
-
-
-مع بقاء عدد المستندات في orders_validated مساويًا لـ466.
-
-## 13. نتائج التشغيل الكبير
-
-تم تشغيل الملف الكبير باستخدام PySpark بنجاح:
-
-data/orders_huge_mixed_quality.csv
-
-
-
-الملف يحتوي على 30,000,000 سجل وحجمه 12,650.32 MB.
-
-كانت النتائج النهائية:
-
-Metric  Result
-
-Engine  PySpark
-
-Rows read   30,000,000
-
-Loaded Raw  30,000,000
-
-Valid   22,343,466
-
-Corrected   5,697,571
-
-Quarantine  1,958,963
-
-Input Partitions    99
-
-Processing Time 19,913.98 seconds
-
-Throughput  1,506.48 records per second
-
-Inserted into Validated 28,041,037
-
-
-
-
-
-تم التحقق من Consistency Check:
-
+``` text
 30,000,000 = 22,343,466 + 5,697,571 + 1,958,963
+```
 
+وكذلك:
 
-
-كما أن عدد السجلات التي دخلت orders_validated يساوي Valid زائد Corrected:
-
+``` text
 28,041,037 = 22,343,466 + 5,697,571
+```
 
+## 14. Queries and Indexes
 
+يتضمن الجزء النهائي خمسة استعلامات عملية على `orders_validated`:
 
-## 14. Queries وIndexes
+1.  Customer ID
+2.  City
+3.  Status + Date Range
+4.  Order ID
+5.  Date Range
 
-يتضمن الجزء النهائي من المشروع مجموعة من الاستعلامات العملية على orders_validated.
+الاستعلامات موجودة داخل:
 
-الاستعلامات الموجودة:
-
-## 1. البحث باستخدام Customer ID.
-
-## 2. البحث باستخدام City.
-
-## 3. البحث باستخدام Status وDate Range.
-
-## 4. البحث باستخدام Order ID.
-
-## 5. البحث باستخدام Date Range.
-
-توجد الاستعلامات بشكل مستقل داخل:
-
+``` text
 src/queries/
+```
 
+والملفات هي:
 
-
-وتشمل:
-
+``` text
 query_01_customer.py
-
 query_02_city.py
-
 query_03_status_date.py
-
 query_04_order_id.py
-
 query_05_date_range.py
+```
 
+### Final Indexes
 
-
-كما توجد Indexes مخصصة لهذه الاستعلامات:
-
+``` text
 uniq_order_id
-
 idx_customer_id
-
 idx_city
-
 idx_status_order_date
+```
 
+تم استخدام `executionStats` لمقارنة الأداء قبل وبعد إنشاء Indexes.
 
+الـ Compound Index هو:
 
-ويتم استخدام executionStats لمقارنة أداء الاستعلامات قبل وبعد إنشاء Indexes.
-
-بالنسبة إلى Compound Index، يستخدم:
-
+``` text
 (status, order_date)
+```
 
-
-
-وتم استخدامه مع الاستعلام الذي يجمع بين Status وDate Range.
+ويستخدم مع الاستعلام الذي يجمع بين Status وDate Range.
 
 ## 15. Aggregations
 
-يتضمن المشروع خمسة تقارير Aggregation مستقلة، وكل تقرير يمكن تشغيله بشكل منفصل ويعيد بيانات فعلية من MongoDB.
+يتضمن المشروع خمسة تقارير Aggregation مستقلة، وكل تقرير يعيد بيانات
+فعلية من MongoDB.
 
-التقارير الموجودة داخل:
+الموجودة داخل:
 
+``` text
 src/aggregations/
+```
 
-
-
-هي:
-
-aggregation_01_city_sales.py
-
-aggregation_02_status_sales.py
-
-aggregation_03_daily_sales.py
-
-aggregation_04_top_customers.py
-
-aggregation_05_city_status.py
-
-
-
-وتغطي التقارير:
-
-- Sales حسب City.
-
-- Sales حسب Status.
-
-- Daily Sales.
-
-- Top Customers.
-
-- City وStatus Analysis.
+-   `aggregation_01_city_sales.py` --- Sales حسب City
+-   `aggregation_02_status_sales.py` --- Sales حسب Status
+-   `aggregation_03_daily_sales.py` --- Daily Sales
+-   `aggregation_04_top_customers.py` --- Top Customers
+-   `aggregation_05_city_status.py` --- City وStatus Analysis
 
 يسمح تقرير Top Customers بتحديد Date Range قبل تنفيذ التجميع.
 
@@ -364,270 +304,192 @@ aggregation_05_city_status.py
 
 الموجودة داخل:
 
+``` text
 src/materialized_views/
+```
 
+-   `mv_01_city_sales.py` → `mv_city_sales`
+-   `mv_02_daily_sales.py` → `mv_daily_sales`
 
+يدعم كل View:
 
-هي:
+-   Full Refresh
+-   Incremental Refresh
 
-mv_01_city_sales.py
-
-mv_02_daily_sales.py
-
-
-
-وتنشئ:
-
-mv_city_sales
-
-mv_daily_sales
-
-
-
-يدعم كل View عملية Full Refresh، كما توجد آلية Incremental Refresh تعتمد على حالة آخر تحديث محفوظة في الـMaterialized View.
-
-تم اختبار Full Refresh وIncremental Refresh لكل من City Sales وDaily Sales.
+تم اختبار آليات Full Refresh وIncremental Refresh لكل من City Sales
+وDaily Sales.
 
 ## 17. Scheduled Jobs
 
-يتضمن المشروع وظيفتين مجدولتين لتحديث Materialized Views:
+يتضمن المشروع وظيفتين لتحديث Materialized Views:
 
-refresh_city_sales
+-   `refresh_city_sales`
+-   `refresh_daily_sales`
 
-refresh_daily_sales
+الوظائف موجودة في:
 
-
-
-توجد الوظائف في:
-
+``` text
 src/jobs/job_runner.py
-
-
+```
 
 كل Job يسجل:
 
-- Start Time
-
-- Finish Time
-
-- Status
-
-- Result أو Error
-
-ويمكن تشغيل الوظائف يدويًا من خلال Job Runner.
+-   Start Time
+-   Finish Time
+-   Status
+-   Result أو Error
 
 كما يوجد Scheduler باستخدام APScheduler في:
 
+``` text
 src/scheduler.py
-
-
+```
 
 ويتم تسجيل وظيفتي التحديث بجدول زمني كل ساعة.
 
 ## 18. FastAPI
 
-تمت إضافة واجهة FastAPI موحدة للوصول إلى وظائف المشروع الموجودة بدل إنشاء Pipeline منفصل.
+تمت إضافة واجهة FastAPI موحدة للوصول إلى وظائف المشروع الموجودة بدل
+إنشاء Pipeline منفصل.
 
 الملف:
 
+``` text
 src/api.py
+```
 
+### Endpoints
 
+  Method   Endpoint
+  -------- ------------------------
+  GET      `/health`
+  POST     `/ingest`
+  POST     `/indexes`
+  GET      `/queries`
+  GET      `/queries/{name}`
+  GET      `/aggregations`
+  GET      `/aggregations/{name}`
+  POST     `/refresh-mv`
+  GET      `/jobs`
+  POST     `/jobs/{name}/run`
 
-الـEndpoints المتوفرة:
+تشغل API باستخدام:
 
-GET  /health
-
-POST /ingest
-
-POST /indexes
-
-GET  /queries
-
-GET  /queries/{name}
-
-GET  /aggregations
-
-GET  /aggregations/{name}
-
-POST /refresh-mv
-
-GET  /jobs
-
-POST /jobs/{name}/run
-
-
-
-تعمل الواجهة على إعادة النتائج بصيغة JSON، وتوفر Swagger Documentation.
-
-لتشغيل API:
-
+``` powershell
 uvicorn src.api:app --reload
+```
 
+ثم يمكن فتح Swagger من:
 
-
-بعد التشغيل يمكن فتح Swagger من:
-
+``` text
 http://127.0.0.1:8000/docs
+```
 
+يستخدم `/ingest` نفس Router وPipeline المستخدمين في التشغيل الأساسي
+للمشروع.
 
-
-ويستخدم /ingest نفس Router وPipeline المستخدمين في التشغيل الأساسي للمشروع.
-
-## 19. النتائج والمقاييس
+## 19. Reports and Metrics
 
 تحفظ Metrics في:
 
+``` text
 reports/results.json
+```
 
+وتتضمن Run ID واسم الملف وحجمه وProcessing Engine وعدد السجلات المقروءة
+والسجلات المحملة إلى Raw وأعداد Valid وCorrected وQuarantine والزمن
+وThroughput وBatch Size أو Partitions وعدادات Inserted وUpdated
+وUnchanged وConsistency Check.
 
+يوجد أيضًا:
 
-وتتضمن النتائج Run ID واسم الملف وحجمه وProcessing Engine وعدد السجلات المقروءة والسجلات المحملة إلى Raw وأعداد Valid وCorrected وQuarantine والزمن وThroughput وBatch Size أو Partitions وعدادات Inserted وUpdated وUnchanged وConsistency Check.
-
-يحتوي:
-
+``` text
 reports/results.md
-
-
-
-على ملخص النتائج النهائية.
-
-بينما يحتوي:
-
+reports/final_evidence.md
 docs/architecture.md
+```
 
-
-
-على وصف Architecture الخاص بالمشروع.
-
-## 20. الاختبارات
+## 20. Testing
 
 لتشغيل الاختبارات:
 
+``` powershell
 python -m pytest -q
+```
 
+آخر نتيجة مسجلة:
 
-
-آخر نتيجة مسجلة للاختبارات هي:
-
+``` text
 25 passed
+```
 
+وتغطي الاختبارات قواعد Cleaning وClassification الأساسية، إضافة إلى
+اختبارات يدوية لـ Classification Parity وIdempotency وDuplicate
+Prevention وUpdate في Python Batch وPySpark.
 
+## 21. Resource Management
 
-تغطي الاختبارات قواعد Cleaning وClassification الأساسية. كما تم تنفيذ اختبارات يدوية لـClassification Parity وIdempotency وDuplicate Prevention وUpdate في Python Batch وPySpark.
+يستخدم المشروع `try/finally` لإغلاق SparkSession واتصال MongoDB حتى عند
+حدوث خطأ أثناء التشغيل.
 
-## 21. إغلاق الموارد
+## 22. Project Structure
 
-يستخدم المشروع try/finally لإغلاق SparkSession واتصال MongoDB حتى عند حدوث خطأ أثناء التشغيل.
-
-## 22. بنية المشروع
-
+``` text
 midterm-data-pipeline/
-
 ├── README.md
-
 ├── requirements.txt
-
 ├── example.env
-
 ├── config/
-
-│   ├── __init__.py
-
-│   └── settings.py
-
+│   ├── __init__.py
+│   └── settings.py
 ├── data/
-
-│   └── .gitkeep
-
+│   └── .gitkeep
 ├── docs/
-
-│   └── architecture.md
-
+│   └── architecture.md
 ├── reports/
-
-│   ├── results.md
-
-│   ├── results.json
-
-│   └── screenshots/
-
+│   ├── results.md
+│   ├── results.json
+│   ├── final_evidence.md
+│   └── screenshots/
 ├── src/
-
-│   ├── __init__.py
-
-│   ├── api.py
-
-│   ├── main.py
-
-│   ├── file_router.py
-
-│   ├── create_small_sample.py
-
-│   ├── batch_loader.py
-
-│   ├── spark_loader.py
-
-│   ├── quality_rules.py
-
-│   ├── elt_pipeline.py
-
-│   ├── incremental_loader.py
-
-│   ├── mongo_setup.py
-
-│   ├── metrics.py
-
-│   ├── final_indexes.py
-
-│   ├── scheduler.py
-
-│   ├── aggregations/
-
-│   │   ├── aggregation_01_city_sales.py
-
-│   │   ├── aggregation_02_status_sales.py
-
-│   │   ├── aggregation_03_daily_sales.py
-
-│   │   ├── aggregation_04_top_customers.py
-
-│   │   └── aggregation_05_city_status.py
-
-│   ├── jobs/
-
-│   │   ├── __init__.py
-
-│   │   └── job_runner.py
-
-│   ├── materialized_views/
-
-│   │   ├── mv_01_city_sales.py
-
-│   │   └── mv_02_daily_sales.py
-
-│   └── queries/
-
-│       ├── query_01_customer.py
-
-│       ├── query_02_city.py
-
-│       ├── query_03_status_date.py
-
-│       ├── query_04_order_id.py
-
-│       └── query_05_date_range.py
-
+│   ├── __init__.py
+│   ├── api.py
+│   ├── main.py
+│   ├── file_router.py
+│   ├── create_small_sample.py
+│   ├── batch_loader.py
+│   ├── spark_loader.py
+│   ├── quality_rules.py
+│   ├── elt_pipeline.py
+│   ├── incremental_loader.py
+│   ├── mongo_setup.py
+│   ├── metrics.py
+│   ├── final_indexes.py
+│   ├── scheduler.py
+│   ├── aggregations/
+│   │   ├── aggregation_01_city_sales.py
+│   │   ├── aggregation_02_status_sales.py
+│   │   ├── aggregation_03_daily_sales.py
+│   │   └── aggregation_04_top_customers.py
+│   ├── jobs/
+│   │   ├── __init__.py
+│   │   └── job_runner.py
+│   ├── materialized_views/
+│   │   ├── mv_01_city_sales.py
+│   │   └── mv_02_daily_sales.py
+│   └── queries/
+│       ├── query_01_customer.py
+│       ├── query_02_city.py
+│       ├── query_03_status_date.py
+│       ├── query_04_order_id.py
+│       └── query_05_date_range.py
 └── tests/
-
-    ├── test_cleaning_rules.py
-
-    └── test_classification.py
-
-
+    ├── test_cleaning_rules.py
+    └── test_classification.py
+```
 
 ## 23. GitHub
 
-المشروع موجود في:
+المشروع:
 
 https://github.com/abeeraun/midterm-data-pipeline
