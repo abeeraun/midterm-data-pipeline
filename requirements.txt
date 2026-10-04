@@ -1,5 +1,8 @@
-pymongo>=4.6,<5
-python-dotenv>=1.0
-python-dateutil>=2.8
-pyspark>=3.5,<4.1
-pytest>=7.4
+﻿pymongo
+pandas
+pyspark
+fastapi
+uvicorn
+apscheduler
+python-dotenv
+pytest
